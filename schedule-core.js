@@ -16,7 +16,6 @@ async function loadSpeakerData() {
         }
         
         const data = await response.json();
-        console.log('Raw speaker data:', data);
         return data;
     } catch (error) {
         console.error('Error loading speaker data:', error);
@@ -136,6 +135,7 @@ function createEventCard(event) {
                         ${createSocialIcons(event.speakerInfo)}
                     </div>
                 </div>
+                ${createSpeakerPopup(event.speakerInfo)}
             </div>
         `;
     }
@@ -153,6 +153,7 @@ function createEventCard(event) {
                         ${createSocialIcons(speaker)}
                     </div>
                 </div>
+                ${createSpeakerPopup(speaker)}
             </div>
         `).join('');
     }
@@ -187,25 +188,76 @@ function getUniqueLocations(schedule) {
     return Array.from(locations);
 }
 
-// Initialize popup handlers
+// Function to render card schedule
+function renderCardSchedule(schedule, speakerData, container) {
+    const cardsContainer = document.createElement('div');
+    cardsContainer.className = 'schedule-cards-container';
+
+    schedule.forEach((timeGroup) => {
+        const timeGroupHtml = `
+            <div class="time-group">
+                <div class="time-marker">${timeGroup.time}</div>
+                ${timeGroup.events
+                    .map(event => createEventCard(enhanceSpeakerInfo(event, speakerData)))
+                    .join('')}
+            </div>
+        `;
+        cardsContainer.insertAdjacentHTML('beforeend', timeGroupHtml);
+    });
+
+    container.appendChild(cardsContainer);
+}
+
+// Function to render table schedule
+function renderTableSchedule(schedule, speakerData, container) {
+    const locations = getUniqueLocations(schedule);
+    const tableContainer = document.createElement('div');
+    tableContainer.className = 'schedule-table-container';
+    
+    let tableHTML = '<table class="schedule-table"><thead><tr><th></th>';
+    locations.forEach(location => {
+        tableHTML += `<th>${location}</th>`;
+    });
+    tableHTML += '</tr></thead><tbody>';
+    
+    schedule.forEach(timeGroup => {
+        tableHTML += `<tr><td class="time-cell">${timeGroup.time}</td>`;
+        
+        locations.forEach(location => {
+            tableHTML += '<td>';
+            const eventsForLocation = timeGroup.events.filter(event => event.location === location);
+            
+            if (eventsForLocation.length > 0) {
+                eventsForLocation.forEach(event => {
+                    const enhancedEvent = enhanceSpeakerInfo(event, speakerData);
+                    tableHTML += createEventCard(enhancedEvent);
+                });
+            }
+            
+            tableHTML += '</td>';
+        });
+        
+        tableHTML += '</tr>';
+    });
+    
+    tableHTML += '</tbody></table>';
+    tableContainer.innerHTML = tableHTML;
+    container.appendChild(tableContainer);
+}
+
+// Function to initialize popup handlers
 function initializePopupHandlers() {
     const overlay = document.querySelector('.popup-overlay');
-    
-    let popupContainer = document.querySelector('.popup-container');
-    if (!popupContainer) {
-        popupContainer = document.createElement('div');
-        popupContainer.className = 'popup-container';
-        document.querySelector('.vitalist-schedule-tabs').appendChild(popupContainer);
-    }
+    const popupContainer = document.createElement('div');
+    popupContainer.className = 'popup-container';
+    document.querySelector('.vitalist-schedule').appendChild(popupContainer);
 
-    const activePane = document.querySelector('.tab-pane.active');
     const processedSpeakers = new Set();
     
-    activePane.querySelectorAll('.speaker').forEach(speakerEl => {
+    document.querySelectorAll('.speaker').forEach(speakerEl => {
         const speakerName = speakerEl.dataset.speaker;
         if (!processedSpeakers.has(speakerName)) {
             processedSpeakers.add(speakerName);
-            
             const existingPopup = speakerEl.querySelector('.speaker-popup');
             if (existingPopup) {
                 const popup = existingPopup.cloneNode(true);
@@ -250,30 +302,10 @@ function initializePopupHandlers() {
     });
 }
 
-// Function to render schedule
-function renderSchedule(schedule, speakerData) {
-    const container = document.createElement('div');
-
-    schedule.forEach((timeGroup) => {
-        const timeGroupHtml = `
-            <div class="time-group">
-                <div class="time-marker">${timeGroup.time}</div>
-                ${timeGroup.events
-                    .map(event => createEventCard(enhanceSpeakerInfo(event, speakerData)))
-                    .join('')}
-            </div>
-        `;
-        container.insertAdjacentHTML('beforeend', timeGroupHtml);
-    });
-    
-    return container;
-}
-
-// Initialize the schedule
+// Main initialization function
 async function initSchedule() {
     const speakerData = await loadSpeakerData();
-        
-    // Initialize schedule for each day
+    
     Object.entries(conferenceSchedule).forEach(([day, dayData]) => {
         const dayNumber = day.replace('day', '');
         const container = document.getElementById(`schedule-container-${dayNumber}`);
@@ -282,129 +314,20 @@ async function initSchedule() {
             renderTableSchedule(dayData.schedule, speakerData, container);
         }
     });
-        
+    
     initializePopupHandlers();
 }
 
-// Render card schedule
-function renderCardSchedule(schedule, speakerData, container) {
-    const cardsContainer = document.createElement('div');
-    cardsContainer.className = 'schedule-cards-container';
-
-    schedule.forEach((timeGroup) => {
-        const timeGroupHtml = `
-            <div class="time-group">
-                <div class="time-marker">${timeGroup.time}</div>
-                ${timeGroup.events
-                    .map(event => createEventCard(enhanceSpeakerInfo(event, speakerData)))
-                    .join('')}
-            </div>
-        `;
-        cardsContainer.insertAdjacentHTML('beforeend', timeGroupHtml);
-    });
-
-    container.appendChild(cardsContainer);
-}
-
-// Render table schedule
-function renderTableSchedule(schedule, speakerData, container) {
-    const locations = getUniqueLocations(schedule);
-    
-    const tableContainer = document.createElement('div');
-    tableContainer.className = 'schedule-table-container';
-    
-    let tableHTML = '<table class="schedule-table"><thead><tr><th></th>';
-    
-    locations.forEach(location => {
-        tableHTML += `<th>${location}</th>`;
-    });
-    tableHTML += '</tr></thead><tbody>';
-    
-    schedule.forEach(timeGroup => {
-        tableHTML += `<tr><td class="time-cell">${timeGroup.time}</td>`;
-        
-        locations.forEach(location => {
-            tableHTML += '<td>';
-            
-            const eventsForLocation = timeGroup.events.filter(event => event.location === location);
-            
-            if (eventsForLocation.length > 0) {
-                eventsForLocation.forEach(event => {
-                    const enhancedEvent = enhanceSpeakerInfo(event, speakerData);
-                    tableHTML += `
-                        <div class="event-container">
-                            <div class="event-type ${event.type.toLowerCase()}-label">${event.type}</div>
-                            <div class="event-title">${event.title}</div>
-                    `;
-                    
-                    if (enhancedEvent.speakerInfo) {
-                        tableHTML += `
-                            <div class="speaker" data-speaker="${enhancedEvent.speakerInfo.name}">
-                                <div class="speaker-photo">
-                                    <img src="${enhancedEvent.speakerInfo.photo}" alt="${enhancedEvent.speakerInfo.name}" loading="lazy">
-                                </div>
-                                <div class="speaker-info">
-                                    <div class="speaker-name">${enhancedEvent.speakerInfo.name}</div>
-                                    <div class="speaker-title">${enhancedEvent.speakerInfo.title}</div>
-                                    <div class="social-links">
-                                        ${createSocialIcons(enhancedEvent.speakerInfo)}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    
-                    if (enhancedEvent.speakersInfo) {
-                        enhancedEvent.speakersInfo.forEach(speaker => {
-                            tableHTML += `
-                                <div class="speaker" data-speaker="${speaker.name}">
-                                    <div class="speaker-photo">
-                                        <img src="${speaker.photo}" alt="${speaker.name}" loading="lazy">
-                                    </div>
-                                    <div class="speaker-info">
-                                        <div class="speaker-name">${speaker.name}</div>
-                                        <div class="speaker-title">${speaker.title}</div>
-                                        <div class="social-links">
-                                            ${createSocialIcons(speaker)}
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                    }
-                    
-                    tableHTML += '</div>';
-                });
-            }
-            
-            tableHTML += '</td>';
-        });
-        
-        tableHTML += '</tr>';
-    });
-    
-    tableHTML += '</tbody></table>';
-    tableContainer.innerHTML = tableHTML;
-    
-    container.appendChild(tableContainer);
-}
-
-// Add tab switching functionality
+// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
+    // Add tab switching functionality
     document.querySelectorAll('.tab-button').forEach(button => {
         button.addEventListener('click', () => {
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
             
             button.classList.add('active');
-            const activePane = document.getElementById(button.dataset.tab);
-            activePane.classList.add('active');
-
-            const popupContainer = document.querySelector('.popup-container');
-            if (popupContainer) {
-                popupContainer.innerHTML = '';
-            }
-
+            document.getElementById(button.dataset.tab).classList.add('active');
             initializePopupHandlers();
         });
     });
